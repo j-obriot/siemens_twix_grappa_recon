@@ -96,6 +96,60 @@ def siemens_quat_to_rot_mat(quat):
 
     return R
 
+def fix_affine(twix_obj):
+    # required keys
+    keys = {
+            'dthick': ('sSliceArray', 'asSlice', '0', 'dThickness'),
+            'dread' : ('sSliceArray', 'asSlice', '0', 'dReadoutFOV'),
+            'dphase': ('sSliceArray', 'asSlice', '0', 'dPhaseFOV'),
+            'lbase' : ('sKSpace', 'lBaseResolution'),
+            'lphase': ('sKSpace', 'lPhaseEncodingLines'),
+            # 'lpart' : ('sKSpace', 'lPartitions'),
+            'ucdim' : ('sKSpace', 'ucDimension'),
+            }
+    sos = ('sKSpace', 'dSliceOversamplingForDialog') # this is actually a call for help
+    rot = siemens_quat_to_rot_mat(twix_obj.image.slicePos[0][-4:])
+    my = twix_obj.hdr.MeasYaps
+
+    for k in keys.keys():
+        if keys[k] not in my:
+            return rot
+
+    dthick = my[keys['dthick']]
+    fov = np.array([
+            my[keys['dread']],
+            my[keys['dphase']],
+            dthick * (1 + my[sos] if sos in my else 1),
+            ])
+
+    lpart = ('sKSpace', 'lPartitions')
+    res = np.array([
+            my[keys['lbase']],
+            my[keys['lphase']],
+            my[lpart] if my[keys['ucdim']] == 4 and lpart in my else 1,
+            ])
+
+    vsize = np.diag([*(fov / res), 1])
+
+    # values seem to vary between images, too lazy to figure out why,
+    # possible error of 0 to 1 voxel size.
+    switcher = np.diag([0, -1, 1/2, 1])
+    # switcher = np.diag([-1, -1, 1/2, 1])
+    strange_offset = (switcher @ vsize).diagonal()[:3]
+
+    offset = twix_obj.image.slicePos[0][:3]
+
+    center = [-fov[0]/2,
+              -fov[1]/2,
+              -(fov[2] - (my[sos] * dthick if sos in my else 0))/2,
+              1]
+
+    t = (center @ rot)[:3] - offset - strange_offset
+
+    full_mat = rot @ vsize
+    full_mat[:3, 3] = t
+
+    return full_mat
 
 def get_filename(filepath, twix_obj, frame=None):
     filename = (

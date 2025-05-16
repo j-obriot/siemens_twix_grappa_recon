@@ -13,7 +13,7 @@ from ggrappa import GRAPPA_Recon
 from tqdm import tqdm
 from pathlib import Path
 
-from .twix_utils import range_normalize, get_filename, siemens_quat_to_rot_mat
+from .twix_utils import range_normalize, get_filename, siemens_quat_to_rot_mat, fix_affine
 
 
 logging.basicConfig(level=logging.INFO)
@@ -309,8 +309,10 @@ class SiemensTwixReco:
 
             if to_dicom_range:
                 self.img = np.int16(range_normalize(self.img, 0, 4095))
-            siemens_quat = self.twix.image.slicePos[0][-4:]
-            scan_img = nib.Nifti1Image(self.img, affine=siemens_quat_to_rot_mat(siemens_quat))
+            # siemens_quat = self.twix.image.slicePos[0][-4:]
+            affine = fix_affine(self.twix)
+            # ¯\_(ツ)_/¯
+            scan_img = nib.Nifti1Image(self.img, affine=affine)
             filename = get_filename(filepath, self)
             if len(self.NFra) != 1:
                 filename += ".nii.gz"
